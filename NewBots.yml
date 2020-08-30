@@ -29,5 +29,5 @@ dependencies:
     - six==1.15.0
     - yarl==1.5.1
     - youtube-dl==2020.7.28
-prefix: C:\Users\gabe\.conda\envs\NewBots
+prefix: %UserProfile%\.conda\envs\NewBots
 
