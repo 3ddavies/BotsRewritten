@@ -4,6 +4,7 @@ from discord.ext import commands
 from discord.utils import get
 import youtube_dl
 import os
+import shutil
 
 def read_tokens():
     with open("tokens.txt", "r") as f:
@@ -44,23 +45,163 @@ async def leave(ctx):
     else:
         await ctx.send("I'm not connected to a voice channel silly!")
 
-@koneko.command(pass_context=True, aliases=["p"])
+@koneko.command(pass_context=True, aliases=["pl"])
 async def play(ctx, url: str):
+
+    def check_queue():
+        Queue_infile = os.path.isdir("./soqu")
+        if Queue_infile is True:
+            DIR = os.path.abspath(os.path.realpath("soqu"))
+            length = len(os.listdir(DIR))
+            still_q = length - 1
+            try:
+                first_file = os.listdir(DIR)[0]
+            except:
+                print("No more queued song(s)\n")
+                queues.clear()
+                return
+            main_location = os.path.dirname(os.path.realpath(__file__))
+            song_path = os.path.abspath(os.path.realpath("soqu") + "\\" + first_file)
+            if length != 0:
+                print("Song done, playing next queued\n")
+                print(f"Songs still in queue: {still_q}")
+                song_there = os.path.isfile("song.mp3")
+                if song_there:
+                    os.remove("song.mp3")
+                shutil.move(song_path, main_location)
+                for file in os.listdir("./"):
+                    if file.endswith(".mp3"):
+                        os.rename(file, 'song.mp3')
+
+                voice.play(discord.FFmpegPCMAudio("song.mp3"), after=lambda e: check_queue())
+                voice.source = discord.PCMVolumeTransformer(voice.source)
+                voice.source.volume = 0.07
+
+            else:
+                queues.clear()
+                return
+
+        else:
+            queues.clear()
+            print("No songs were queued before the ending of the last song\n")
+
+
+
     song_there = os.path.isfile("song.mp3")
     try:
-        if song_there:#if there is an existing song file
+        if song_there:
             os.remove("song.mp3")
+            queues.clear()
+            print("Removed old song file")
     except PermissionError:
-        print("Song is being played currently, can't delete.")
-        await ctx.send("I'm already playing something!!")
+        print("Trying to delete song file, but it's being played")
+        await ctx.send("ERROR: Music playing")
         return
 
-    await ctx.send("Just finishing up!")
+
+    Queue_infile = os.path.isdir("./soqu")
+    try:
+        Queue_folder = "./soqu"
+        if Queue_infile is True:
+            print("Removed old Queue Folder")
+            shutil.rmtree(Queue_folder)
+    except:
+        print("No old Queue folder")
+
+    await ctx.send("Getting everything ready now")
 
     voice = get(koneko.voice_clients, guild=ctx.guild)
 
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
+
+    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        print("Downloading audio now\n")
+        ydl.download([url])
+
+    for file in os.listdir("./"):
+        if file.endswith(".mp3"):
+            name = file
+            print(f"Renamed File: {file}\n")
+            os.rename(file, "song.mp3")
+
+    voice.play(discord.FFmpegPCMAudio("song.mp3"), after=lambda e: check_queue())
+    voice.source = discord.PCMVolumeTransformer(voice.source)
+    voice.source.volume = 0.07
+
+    nname = name.rsplit("-", 2)
+    await ctx.send(f"Playing: {nname[0]}")
+    print("playing\n")
+
+
+
+@koneko.command(pass_context=True, aliases=["pa"])
+async def pause(ctx):
+    voice = get(koneko.voice_clients, guild=ctx.guild)
+
+    if voice and voice.is_playing():
+        voice.pause()
+        await ctx.send("Pausing your lovely tunes.")
+
+    else:
+        await ctx.send("I'm not playing anything, why do you want me to shut up so badly?!")
+
+@koneko.command(pass_context=True, aliases=["r"])
+async def resume(ctx):
+    voice = get(koneko.voice_clients, guild=ctx.guild)
+
+    if voice and voice.is_paused():
+        voice.resume()
+        await ctx.send("Resuming music. What a BOP!")
+
+    else:
+        await ctx.send("I'm flattered you like hearing me so much, but I don't have anything to resume :wink:")
+
+@koneko.command(pass_context=True, aliases=["s"])
+async def stop(ctx):
+    voice = get(koneko.voice_clients, guild=ctx.guild)
+
+    queues.clear()
+
+    if voice and voice.is_playing():
+        voice.stop()
+        await ctx.send("I'll stop playing that.")
+
+    else:
+        await ctx.send("I'm not playing anything, why do you want me to shut up so badly?!")
+
+queues = {}
+
+@koneko.command(pass_context=True, aliases=["que"])
+async def queue(ctx, url: str):
+    qif = os.path.isdir("./soqu")
+
+    if qif is False:
+        os.mkdir("soqu")
+
+    dp=os.path.abspath(os.path.realpath("soqu"))
+    qn=len(os.listdir(dp))+1
+    aq=True
+
+    while aq == True:
+        if qn in queues:
+            qn+=1
+        else:
+            aq=False
+            queues[qn]=qn
+
+    qp=os.path.abspath(os.path.realpath("soqu")+f"\s{qn}.%(ext)s")
+
     ytdl_opts = {
         'format': 'bestaudio/best',
+        'outtmpl': qp,
         'postprocessors': [{
             "key": 'FFmpegExtractAudio',
             "preferredcodec": 'mp3',
@@ -71,23 +212,11 @@ async def play(ctx, url: str):
     with youtube_dl.YoutubeDL(ytdl_opts) as ydl:
         print("Downloading...\n")
         ydl.download([url])
-
-    for f in os.listdir("./"):
-        if f.endswith('.mp3'):
-            name=f
-            os.rename(f, "song.mp3")
-
-    voice.play(discord.FFmpegPCMAudio("song.mp3"), after=lambda e: print(f"Done playing {name}."))
-    voice.source=discord.PCMVolumeTransformer(voice.source)
-    voice.source.volume = 0.07
-
-    nn = name.rsplit("-",2)
-    await ctx.send(f"playing {nn}")
-
+    await ctx.send(f"Adding item to the queue. {qn} items in queue total.")
 
 @koneko.command()
 async def ping(ctx):
-    await ctx.send(":ping_pong: Pong!")
+    await ctx.send(f""":ping_pong: Pong! ({round(koneko.latency, 1)}ms)""")
 
 @koneko.command()
 async def pwd(ctx):
@@ -118,7 +247,7 @@ async def ostimes(ctx):
 @koneko.command()
 async def time(ctx):
     cdat = datetime.datetime.now()
-    await ctx.send("The time is " + str(cdat.hour) + ":" + str(cdat.minute) + ":" + str(cdat.second) + " and the date is " + str(cdat.day) + "/" + str(cdat.month) + "/" + str(cdat.year))
+    await ctx.send(f"The time is {cdat.hour}:{cdat.minute}:{cdat.second} and the date is {cdat.day}/{cdat.month}/{cdat.year}")
 
 
 @koneko.command()
@@ -159,10 +288,10 @@ async def on_message(message):
 """
 
 @koneko.event
-async def on_member_join(member):
+async def on_member_join(ctx,member):
     for channel in member.server.channels:
         if channel == "general":
-            await channel.send(f"""Welcome, {member.mention}! I'm so glad you're here :sparkling_heart:""")
+            await ctx.send(f"""Welcome, {member.mention}! I'm so glad you're here :sparkling_heart:""")
 
 
 @koneko.event
